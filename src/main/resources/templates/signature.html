@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Ký PDF</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input[type="file"],
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .signature-area {
+            position: relative;
+            width: 842px; /* A4 landscape width in pixels (297mm) */
+            height: 595px; /* A4 landscape height in pixels (210mm) */
+            border: 2px dashed #ccc;
+            margin: 20px auto;
+            background-color: #fff;
+            overflow: hidden;
+        }
+        .signature-box {
+            position: absolute;
+            border: 2px solid #4CAF50;
+            background-color: rgba(76, 175, 80, 0.1);
+            cursor: move;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .signature-box img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .coordinates {
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            display: block;
+            margin: 20px auto;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .preview-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .preview-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .signature-styles {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .style-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s ease;
+            color: #666;
+        }
+        
+        .style-btn i {
+            font-size: 24px;
+        }
+        
+        .style-btn[data-style="normal"] {
+            color: #4CAF50;
+        }
+        
+        .style-btn[data-style="normal"] i {
+            color: #4CAF50;
+        }
+        
+        .style-btn[data-style="stamp"] {
+            color: #f44336;
+        }
+        
+        .style-btn[data-style="stamp"] i {
+            color: #f44336;
+        }
+        
+        .style-btn[data-style="seal"] {
+            color: #2196F3;
+        }
+        
+        .style-btn[data-style="seal"] i {
+            color: #2196F3;
+        }
+        
+        .style-btn[data-style="deferred"] {
+            color: #9C27B0;
+        }
+        
+        .style-btn[data-style="deferred"] i {
+            color: #9C27B0;
+        }
+        
+        .style-btn.active {
+            border-color: currentColor;
+            background-color: rgba(0, 0, 0, 0.03);
+        }
+        
+        .style-btn:hover {
+            border-color: currentColor;
+            background-color: rgba(0, 0, 0, 0.03);
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Ký PDF</h1>
+        <form th:action="@{/api/signature/sign}" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="pdfFile">Chọn file PDF:</label>
+                <input type="file" id="pdfFile" name="pdfFile" accept=".pdf" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="signatureImage">Chọn ảnh chữ ký:</label>
+                <input type="file" id="signatureImage" name="signatureImage" accept="image/*" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Kiểu chữ ký:</label>
+                <div class="signature-styles">
+                    <button type="button" class="style-btn active" data-style="normal">
+                        <i class="fas fa-signature"></i>
+                        Chữ ký thường
+                    </button>
+                    <button type="button" class="style-btn" data-style="stamp">
+                        <i class="fas fa-stamp"></i>
+                        Chữ ký đóng dấu
+                    </button>
+                    <button type="button" class="style-btn" data-style="seal">
+                        <i class="fas fa-circle"></i>
+                        Chữ ký con dấu
+                    </button>
+                    <button type="button" class="style-btn" data-style="deferred">
+                        <i class="fas fa-clock"></i>
+                        Chữ ký trễ
+                    </button>
+                </div>
+            </div>
+            
+            <div class="form-group" id="p12Fields">
+                <label for="p12File">Chọn file chứng chỉ số (.p12):</label>
+                <input type="file" id="p12File" name="p12File" accept=".p12">
+            </div>
+            
+            <div class="form-group" id="p12PasswordField">
+                <label for="p12Password">Mật khẩu chứng chỉ số:</label>
+                <input type="password" id="p12Password" name="p12Password">
+            </div>
+            
+            <div class="signature-area" id="signatureArea">
+                <div class="signature-box" id="signatureBox" style="width: 200px; height: 100px; left: 100px; top: 100px;">
+                    <span>Kéo để di chuyển</span>
+                    <div class="coordinates">x: 100, y: 100</div>
+                </div>
+            </div>
+            
+            <input type="hidden" id="x" name="x" value="100">
+            <input type="hidden" id="y" name="y" value="100">
+            <input type="hidden" id="width" name="width" value="200">
+            <input type="hidden" id="height" name="height" value="100">
+            
+            <div style="display: flex; justify-content: center; gap: 20px;">
+                <button type="submit" formaction="/api/signature/sign">Ký số PDF</button>
+                <button type="submit" formaction="/api/signature/embed-image">Chỉ gán ảnh chữ ký</button>
+            </div>
+        </form>
+        
+        <form th:action="@{/api/signature/sign-deferred}" method="post" enctype="multipart/form-data" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <h3>Ký chữ ký trễ</h3>
+            <div class="form-group">
+                <label for="deferredPdfFile">Chọn file PDF đã có chữ ký trễ:</label>
+                <input type="file" id="deferredPdfFile" name="pdfFile" accept=".pdf" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="deferredP12File">Chọn file chứng chỉ số (.p12):</label>
+                <input type="file" id="deferredP12File" name="p12File" accept=".p12" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="deferredP12Password">Mật khẩu chứng chỉ số:</label>
+                <input type="password" id="deferredP12Password" name="p12Password" required>
+            </div>
+            
+            <button type="submit">Ký chữ ký trễ</button>
+        </form>
+        
+        <div class="preview-container">
+            <h3>Xem trước chữ ký</h3>
+            <img id="signaturePreview" src="#" alt="Xem trước chữ ký" style="display: none;">
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const signatureBox = document.getElementById('signatureBox');
+            const signatureArea = document.getElementById('signatureArea');
+            const xInput = document.getElementById('x');
+            const yInput = document.getElementById('y');
+            const widthInput = document.getElementById('width');
+            const heightInput = document.getElementById('height');
+            const signatureImage = document.getElementById('signatureImage');
+            const signaturePreview = document.getElementById('signaturePreview');
+            const coordinates = signatureBox.querySelector('.coordinates');
+            const p12Fields = document.getElementById('p12Fields');
+            const p12PasswordField = document.getElementById('p12PasswordField');
+            const p12File = document.getElementById('p12File');
+            const p12Password = document.getElementById('p12Password');
+            const styleButtons = document.querySelectorAll('.style-btn');
+            let currentStyle = 'normal';
+            
+            // Add event listeners to buttons to handle P12 fields visibility
+            document.querySelectorAll('button[formaction]').forEach(button => {
+                button.addEventListener('click', function() {
+                    const isDigitalSign = this.getAttribute('formaction') === '/api/signature/sign';
+                    const isDeferred = currentStyle === 'deferred';
+                    
+                    // Show P12 fields only for digital sign and not for deferred
+                    p12Fields.style.display = (isDigitalSign && !isDeferred) ? 'block' : 'none';
+                    p12PasswordField.style.display = (isDigitalSign && !isDeferred) ? 'block' : 'none';
+                    p12File.required = (isDigitalSign && !isDeferred);
+                    p12Password.required = (isDigitalSign && !isDeferred);
+                });
+            });
+            
+            // Initially hide P12 fields
+            p12Fields.style.display = 'none';
+            p12PasswordField.style.display = 'none';
+            
+            let isDragging = false;
+            let currentX;
+            let currentY;
+            let initialX;
+            let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
+            
+            // Xử lý kéo thả
+            signatureBox.addEventListener('mousedown', dragStart);
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', dragEnd);
+            
+            function dragStart(e) {
+                if (e.target === signatureBox || e.target.parentElement === signatureBox) {
+                    isDragging = true;
+                    initialX = e.clientX - xOffset;
+                    initialY = e.clientY - yOffset;
+                }
+            }
+            
+            function drag(e) {
+                if (isDragging) {
+                    e.preventDefault();
+                    
+                    currentX = e.clientX - initialX;
+                    currentY = e.clientY - initialY;
+                    
+                    // Giới hạn vị trí trong vùng chọn
+                    const maxX = signatureArea.offsetWidth - signatureBox.offsetWidth;
+                    const maxY = signatureArea.offsetHeight - signatureBox.offsetHeight;
+                    
+                    currentX = Math.max(0, Math.min(currentX, maxX));
+                    currentY = Math.max(0, Math.min(currentY, maxY));
+                    
+                    xOffset = currentX;
+                    yOffset = currentY;
+                    
+                    signatureBox.style.left = currentX + 'px';
+                    signatureBox.style.top = currentY + 'px';
+                    updateCoordinates();
+                }
+            }
+            
+            function dragEnd(e) {
+                initialX = currentX;
+                initialY = currentY;
+                isDragging = false;
+            }
+            
+            function updateCoordinates() {
+                const rect = signatureBox.getBoundingClientRect();
+                const areaRect = signatureArea.getBoundingClientRect();
+                
+                const x = rect.left - areaRect.left;
+                const y = areaRect.height - (rect.top - areaRect.top + rect.height);
+                
+                xInput.value = Math.round(x);
+                yInput.value = Math.round(y);
+                widthInput.value = Math.round(rect.width);
+                heightInput.value = Math.round(rect.height);
+                
+                coordinates.textContent = `x: ${Math.round(x)}, y: ${Math.round(y)}`;
+            }
+            
+            // Handle signature style selection
+            styleButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    styleButtons.forEach(btn => btn.classList.remove('active'));
+                    // Add active class to clicked button
+                    this.classList.add('active');
+                    // Update current style
+                    currentStyle = this.dataset.style;
+                    // Update signature box style
+                    updateSignatureStyle();
+                    
+                    // Update P12 fields visibility based on style
+                    const isDeferred = currentStyle === 'deferred';
+                    p12Fields.style.display = isDeferred ? 'none' : 'block';
+                    p12PasswordField.style.display = isDeferred ? 'none' : 'block';
+                    p12File.required = !isDeferred;
+                    p12Password.required = !isDeferred;
+                });
+            });
+            
+            function updateSignatureStyle() {
+                const signatureBox = document.getElementById('signatureBox');
+                switch(currentStyle) {
+                    case 'stamp':
+                        signatureBox.style.border = '2px solid #ff4444';
+                        signatureBox.style.backgroundColor = 'rgba(255, 68, 68, 0.1)';
+                        break;
+                    case 'seal':
+                        signatureBox.style.border = '2px solid #2196F3';
+                        signatureBox.style.backgroundColor = 'rgba(33, 150, 243, 0.1)';
+                        break;
+                    default: // normal
+                        signatureBox.style.border = '2px solid #4CAF50';
+                        signatureBox.style.backgroundColor = 'rgba(76, 175, 80, 0.1)';
+                }
+            }
+            
+            // Xử lý xem trước ảnh chữ ký
+            signatureImage.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        signaturePreview.src = e.target.result;
+                        signaturePreview.style.display = 'block';
+                        
+                        const img = new Image();
+                        img.onload = function() {
+                            const maxWidth = 200;
+                            const maxHeight = 100;
+                            let width = img.width;
+                            let height = img.height;
+                            
+                            if (width > maxWidth) {
+                                height = (maxWidth * height) / width;
+                                width = maxWidth;
+                            }
+                            
+                            if (height > maxHeight) {
+                                width = (maxHeight * width) / height;
+                                height = maxHeight;
+                            }
+                            
+                            signatureBox.style.width = width + 'px';
+                            signatureBox.style.height = height + 'px';
+                            signatureBox.innerHTML = `<img src="${e.target.result}" style="width: 100%; height: 100%; object-fit: contain;">
+                                <div class="coordinates">x: ${Math.round(xInput.value)}, y: ${Math.round(yInput.value)}</div>`;
+                            updateCoordinates();
+                            updateSignatureStyle();
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            // Add style parameter to form submission
+            document.querySelectorAll('button[formaction]').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    const form = this.closest('form');
+                    const styleInput = document.createElement('input');
+                    styleInput.type = 'hidden';
+                    styleInput.name = 'signatureStyle';
+                    styleInput.value = currentStyle;
+                    form.appendChild(styleInput);
+                });
+            });
+
+            // Add event listener for form submission
+            document.querySelector('form').addEventListener('submit', function(e) {
+                const submitButton = document.activeElement;
+                const isDeferred = currentStyle === 'deferred';
+                
+                if (isDeferred) {
+                    // For deferred signature, always use the sign endpoint
+                    submitButton.setAttribute('formaction', '/api/signature/sign');
+                }
+            });
+        });
+    </script>
+</body>
+</html> 
