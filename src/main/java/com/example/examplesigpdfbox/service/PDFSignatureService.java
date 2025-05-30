@@ -17,6 +17,9 @@ import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
+import org.bouncycastle.cms.SignerInfoGenerator;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -38,6 +41,27 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
+import org.apache.pdfbox.io.IOUtils;
+
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.bc.BcDigestCalculatorProvider;
+import org.bouncycastle.asn1.cms.CMSAttributes;
+import org.bouncycastle.cms.DefaultSignedAttributeTableGenerator;
+import org.bouncycastle.asn1.DERSet;
+import org.bouncycastle.asn1.cms.Attribute;
+import org.bouncycastle.asn1.cms.AttributeTable;
+import org.bouncycastle.asn1.cms.ContentInfo;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.x509.Time;
+import org.bouncycastle.operator.DigestCalculatorProvider;
+
+import java.util.Date;
+import java.util.Hashtable;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1Encodable;
+import org.bouncycastle.asn1.ASN1Set;
 
 @Service
 public class PDFSignatureService {
@@ -416,26 +440,74 @@ public class PDFSignatureService {
 
         // Create signature options with larger size
         SignatureOptions signatureOptions = new SignatureOptions();
-        signatureOptions.setPreferredSignatureSize(10000000); // Increase to 10MB
+        int reservedSpace = 25000000; // Reserve 25MB for the signature
+        signatureOptions.setPreferredSignatureSize(reservedSpace);
         signatureOptions.setPage(0);
 
-        // Create a temporary signature to get the hash
+        // Create a temporary signature to get the hash and reserve space
         document.addSignature(signature, new SignatureInterface() {
             @Override
             public byte[] sign(InputStream content) throws IOException {
-                // Return the hash of the content
-                return content.readAllBytes();
+                // Read the content to calculate the hash
+                byte[] contentBytes = content.readAllBytes();
+                // Note: We don't return the hash here. We return the placeholder.
+                // The hash is calculated based on the content *before* the placeholder is filled.
+                
+                // Return a byte array of the desired reserved size (e.g., 25MB)
+                // This forces PDFBox to reserve this amount of space for the Contents field.
+                byte[] placeholder = new byte[reservedSpace]; // Use the same reservedSpace
+                // Fill with zeros (ByteArrayOutputStream already initializes with zeros)
+                return placeholder;
             }
         }, signatureOptions);
 
-        // Save to temporary file to get the hash
+        // Save to temporary file. This creates the placeholder.
         File tempFile = File.createTempFile("temp", ".pdf");
         document.saveIncremental(new FileOutputStream(tempFile));
         document.close();
 
-        // Read the hash from the temporary file
-        byte[] hash = Files.readAllBytes(tempFile.toPath());
-        // Keep the temporary file for step 3
+        // Re-open the document to calculate the hash correctly based on the document *with* the placeholder
+        PDDocument docForHash = Loader.loadPDF(tempFile);
+         // Get the signature dictionary to calculate the hash using getByteRange
+        PDSignature sigForHash = docForHash.getSignatureDictionaries().get(0);
+        ByteArrayOutputStream hashOutputStream = new ByteArrayOutputStream();
+
+        // Calculate the hash based on the byte range *excluding* the placeholder
+        byte[] buffer = new byte[4096];
+        RandomAccessRead randAccess = new RandomAccessReadBuffer(Files.readAllBytes(tempFile.toPath()));
+        COSArray byteRange = (COSArray) sigForHash.getCOSObject().getDictionaryObject(COSName.BYTERANGE);
+
+        long initialPartOffset = ((org.apache.pdfbox.cos.COSInteger) byteRange.get(0)).longValue();
+        long initialPartLength = ((org.apache.pdfbox.cos.COSInteger) byteRange.get(1)).longValue();
+        long finalPartOffset = ((org.apache.pdfbox.cos.COSInteger) byteRange.get(2)).longValue();
+        long finalPartLength = ((org.apache.pdfbox.cos.COSInteger) byteRange.get(3)).longValue();
+
+        // Read the initial part
+        randAccess.seek(initialPartOffset);
+        long remainingInitial = initialPartLength;
+        while (remainingInitial > 0) {
+            int bytesToRead = (int) Math.min(buffer.length, remainingInitial);
+            int bytesRead = randAccess.read(buffer, 0, bytesToRead);
+            if (bytesRead == -1) break; // Should not happen in this case
+            hashOutputStream.write(buffer, 0, bytesRead);
+            remainingInitial -= bytesRead;
+        }
+
+        // Read the final part
+        randAccess.seek(finalPartOffset);
+        long remainingFinal = finalPartLength;
+        while (remainingFinal > 0) {
+            int bytesToRead = (int) Math.min(buffer.length, remainingFinal);
+            int bytesRead = randAccess.read(buffer, 0, bytesToRead);
+            if (bytesRead == -1) break; // Should not happen in this case
+            hashOutputStream.write(buffer, 0, bytesRead);
+            remainingFinal -= bytesRead;
+        }
+
+        randAccess.close();
+        docForHash.close();
+
+        byte[] hash = hashOutputStream.toByteArray();
 
         return new HashCreationResult(hash, tempFile.getAbsolutePath());
     }
@@ -481,15 +553,43 @@ public class PDFSignatureService {
         }
         JcaCertStore certStore = new JcaCertStore(certList);
 
-        // Create the signature generator with SHA-256
+        // Create the signature generator
         CMSSignedDataGenerator generator = new CMSSignedDataGenerator();
+
+        // Add certificates to the generator
+        generator.addCertificates(certStore);
+
+        // Create ContentSigner
         ContentSigner contentSigner = new JcaContentSignerBuilder("SHA256withRSA")
                 .build(privateKey);
-        generator.addSignerInfoGenerator(
-                new JcaSignerInfoGeneratorBuilder(
-                        new JcaDigestCalculatorProviderBuilder().build())
-                        .build(contentSigner, (java.security.cert.X509Certificate) certChain[0]));
-        generator.addCertificates(certStore);
+
+        // Create SignerInfoGeneratorBuilder
+        JcaDigestCalculatorProviderBuilder dcpBuilder = new JcaDigestCalculatorProviderBuilder();
+        DigestCalculatorProvider digestProvider = dcpBuilder.build();
+        
+        // Create signed attributes table
+        Hashtable<ASN1ObjectIdentifier, ASN1Set> signedAttrs = new Hashtable<>();
+
+        // Add contentType attribute (required for PDF)
+        signedAttrs.put(CMSAttributes.contentType, new DERSet(PKCSObjectIdentifiers.data));
+
+        // Add signingTime attribute
+        signedAttrs.put(CMSAttributes.signingTime, new DERSet(new Time(new Date())));
+
+        // Create AttributeTable from attributes
+        AttributeTable signedAttributeTable = new AttributeTable(signedAttrs);
+
+        // Create SignerInfoGenerator
+        X509CertificateHolder certHolder = new JcaX509CertificateHolder((java.security.cert.X509Certificate) certChain[0]);
+        
+        SignerInfoGenerator signerInfoGenerator = new JcaSignerInfoGeneratorBuilder(
+                digestProvider)
+                .setSignedAttributeGenerator(new DefaultSignedAttributeTableGenerator(signedAttributeTable))
+                .setUnsignedAttributeGenerator(null)
+                .build(contentSigner, certHolder);
+        
+        // Add SignerInfoGenerator to the generator
+        generator.addSignerInfoGenerator(signerInfoGenerator);
 
         // Create the signature
         CMSProcessableByteArray cmsData = new CMSProcessableByteArray(hash);
