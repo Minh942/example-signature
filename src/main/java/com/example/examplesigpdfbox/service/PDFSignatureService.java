@@ -11,16 +11,16 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.interactive.digitalsignature.ExternalSigningSupport;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions;
-import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.DEROctetString;
-import org.bouncycastle.asn1.DERSet;
+import org.bouncycastle.asn1.*;
 import org.bouncycastle.asn1.cms.Attribute;
 import org.bouncycastle.asn1.cms.AttributeTable;
 import org.bouncycastle.asn1.cms.CMSAttributes;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.Time;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaCertStore;
@@ -28,18 +28,23 @@ import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.bouncycastle.cms.*;
 import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder;
 import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.DefaultSignatureAlgorithmIdentifierFinder;
 import org.bouncycastle.operator.DigestCalculatorProvider;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
+import org.bouncycastle.util.io.pem.PemObject;
+import org.bouncycastle.util.io.pem.PemReader;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.security.KeyStore;
-import java.security.MessageDigest;
-import java.security.PrivateKey;
+import java.security.*;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.*;
 
 @Service
@@ -397,7 +402,7 @@ public class PDFSignatureService {
             }
 
             // Update the Contents field with the actual signature data as a hexadecimal string
-            signatureDict.setItem(COSName.CONTENTS, new COSString("<" + hexSignature.toString() + ">"));
+            signatureDict.setItem(COSName.CONTENTS, new COSString("<" + hexSignature + ">"));
 
             // Save the modified document incrementally
             document.saveIncremental(new FileOutputStream(outputPDFPath));
@@ -432,20 +437,17 @@ public class PDFSignatureService {
         signatureOptions.setPage(0);
 
         // Create a temporary signature to get the hash and reserve space
-        document.addSignature(signature, new SignatureInterface() {
-            @Override
-            public byte[] sign(InputStream content) throws IOException {
-                // Read the content to calculate the hash
-                byte[] contentBytes = content.readAllBytes();
-                // Note: We don't return the hash here. We return the placeholder.
-                // The hash is calculated based on the content *before* the placeholder is filled.
+        document.addSignature(signature, content -> {
+            // Read the content to calculate the hash
+            byte[] contentBytes = content.readAllBytes();
+            // Note: We don't return the hash here. We return the placeholder.
+            // The hash is calculated based on the content *before* the placeholder is filled.
 
-                // Return a byte array of the desired reserved size (e.g., 25MB)
-                // This forces PDFBox to reserve this amount of space for the Contents field.
-                // Use the same reservedSpace
-                // Fill with zeros (ByteArrayOutputStream already initializes with zeros)
-                return new byte[reservedSpace];
-            }
+            // Return a byte array of the desired reserved size (e.g., 25MB)
+            // This forces PDFBox to reserve this amount of space for the Contents field.
+            // Use the same reservedSpace
+            // Fill with zeros (ByteArrayOutputStream already initializes with zeros)
+            return new byte[reservedSpace];
         }, signatureOptions);
 
         // Save to temporary file. This creates the placeholder.
@@ -571,5 +573,162 @@ public class PDFSignatureService {
         CMSSignedData signedData = generator.generate(cmsData, false); // Use false for detached signature
 
         return signedData.getEncoded();
+    }
+
+    /**
+     * Bước 1: Chuẩn bị tài liệu và tạo chữ ký
+     */
+    public ExternalSigningSupport prepareDocumentForSigning(String inputPath, String outputPath) throws IOException {
+        try (PDDocument document = Loader.loadPDF(new File(inputPath))) {
+            // Tạo đối tượng chữ ký
+            PDSignature signature = new PDSignature();
+            signature.setFilter(PDSignature.FILTER_ADOBE_PPKLITE);
+            signature.setSubFilter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED);
+            signature.setName("Digital Signature");
+            signature.setReason("Document Signing");
+            signature.setLocation("Company Location");
+
+            // Thiết lập thời gian ký
+            Calendar cal = Calendar.getInstance();
+            signature.setSignDate(cal);
+
+            // Thêm chữ ký vào tài liệu
+            SignatureOptions options = new SignatureOptions();
+            document.addSignature(signature, null, options);
+            document.setDocumentId(System.currentTimeMillis());
+
+            // Lưu tài liệu và chuẩn bị cho việc ký
+            return document.saveIncrementalForExternalSigning(new FileOutputStream(outputPath));
+        }
+    }
+
+    /**
+     * Bước 2: Tạo hash và ký số
+     */
+    public byte[] createSignature(ExternalSigningSupport externalSigning) throws IOException {
+        try {
+            // Đọc nội dung cần ký
+            byte[] content = externalSigning.getContent().readAllBytes();
+
+            // Tạo hash SHA-256
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(content);
+            String base64Hash = Base64.getEncoder().encodeToString(hashBytes);
+
+            // Ký hash
+            byte[] signedHash = signHash(base64Hash);
+
+            // Tạo CMS signature
+            return createCMSSignature(signedHash);
+        } catch (Exception e) {
+            throw new IOException("Error creating signature", e);
+        }
+    }
+
+    /**
+     * Bước 3: Hoàn tất việc ký và lưu tài liệu
+     */
+    public void completeSigning(ExternalSigningSupport externalSigning, byte[] signature) throws IOException {
+        try {
+            // Thêm chữ ký vào tài liệu
+            externalSigning.setSignature(signature);
+        } catch (Exception e) {
+            throw new IOException("Error completing signature", e);
+        }
+    }
+
+    /**
+     * Tạo chữ ký CMS
+     */
+    private byte[] createCMSSignature(byte[] signedHash) throws Exception {
+        ContentSigner nonSigner = new ContentSigner() {
+            @Override
+            public byte[] getSignature() {
+                return signedHash;
+            }
+
+            @Override
+            public OutputStream getOutputStream() {
+                return new ByteArrayOutputStream();
+            }
+
+            @Override
+            public AlgorithmIdentifier getAlgorithmIdentifier() {
+                return new DefaultSignatureAlgorithmIdentifierFinder().find("SHA256WithRSA");
+            }
+        };
+
+        List<X509Certificate> certChain = loadCertificateChain();
+        X509Certificate cert = certChain.get(0);
+        org.bouncycastle.asn1.x509.Certificate bouncycastleCert = org.bouncycastle.asn1.x509.Certificate
+                .getInstance(ASN1Primitive.fromByteArray(cert.getEncoded()));
+
+        DigestCalculatorProvider digestCalculatorProvider = new JcaDigestCalculatorProviderBuilder().build();
+        JcaSignerInfoGeneratorBuilder sigb = new JcaSignerInfoGeneratorBuilder(digestCalculatorProvider);
+        sigb.setDirectSignature(true);
+
+        CMSSignedDataGenerator gen = new CMSSignedDataGenerator();
+        gen.addCertificates(new JcaCertStore(certChain));
+        SignerInfoGenerator signerInfoGenerator = sigb.build(nonSigner, new X509CertificateHolder(bouncycastleCert));
+        gen.addSignerInfoGenerator(signerInfoGenerator);
+
+        CMSTypedData msg = new CMSProcessableInputStream(new ByteArrayInputStream("not used".getBytes()));
+        CMSSignedData signedData = gen.generate(msg, false);
+        return signedData.getEncoded();
+    }
+
+    /**
+     * Ký hash với private key
+     */
+    private byte[] signHash(String hash) throws Exception {
+        byte[] hashBytes = Base64.getDecoder().decode(hash);
+        Signature sig = Signature.getInstance("NONEwithRSA");
+        sig.initSign(loadPrivateKey());
+        byte[] hashWrapped = wrapForRsaSign(hashBytes);
+        sig.update(hashWrapped);
+        return sig.sign();
+    }
+
+    /**
+     * Load chuỗi chứng chỉ
+     */
+    private List<X509Certificate> loadCertificateChain() throws Exception {
+        String certPath = ""; // Cấu hình đường dẫn file chứng chỉ
+        try (InputStream inStream = new FileInputStream(certPath)) {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            return (List<X509Certificate>) cf.generateCertificates(inStream);
+        }
+    }
+
+    /**
+     * Load private key
+     */
+    private PrivateKey loadPrivateKey() throws Exception {
+        String privateKeyPath = ""; // Cấu hình đường dẫn file private key
+        try (Reader reader = new FileReader(privateKeyPath, StandardCharsets.UTF_8);
+             PemReader pemReader = new PemReader(reader)) {
+            PemObject pemObject = pemReader.readPemObject();
+            byte[] keyBytes = pemObject.getContent();
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(keyBytes);
+            return kf.generatePrivate(privSpec);
+        }
+    }
+
+    /**
+     * Wrap hash cho việc ký RSA
+     */
+    private byte[] wrapForRsaSign(byte[] dig) throws IOException {
+        ASN1ObjectIdentifier oid = new DefaultDigestAlgorithmIdentifierFinder().find("SHA-256").getAlgorithm();
+
+        ASN1EncodableVector algIdentifier = new ASN1EncodableVector();
+        algIdentifier.add(oid);
+        algIdentifier.add(DERNull.INSTANCE);
+
+        ASN1EncodableVector digestInfo = new ASN1EncodableVector();
+        digestInfo.add(new DERSequence(algIdentifier));
+        digestInfo.add(new DEROctetString(dig));
+
+        return new DERSequence(digestInfo).getEncoded();
     }
 }
