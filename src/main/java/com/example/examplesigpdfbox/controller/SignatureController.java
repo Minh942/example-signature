@@ -174,9 +174,9 @@ public class SignatureController {
 
             // Return hash and temporary file path
             Map<String, String> response = new HashMap<>();
-            response.put("hash", Base64.getEncoder().encodeToString(hashResult.getHash()));
+            response.put("hash", Base64.getEncoder().encodeToString(hashResult.hash()));
             response.put("originalFileName", file.getOriginalFilename());
-            response.put("tempFilePath", hashResult.getTempFilePath()); // Return temp file path
+            response.put("tempFilePath", hashResult.tempFilePath()); // Return temp file path
 
             // Do NOT delete tempFile here, it's needed for step 3
 

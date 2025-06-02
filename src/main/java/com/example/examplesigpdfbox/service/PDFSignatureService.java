@@ -1,67 +1,46 @@
 package com.example.examplesigpdfbox.service;
 
 import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
-import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface;
-import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions;
-import org.bouncycastle.cert.jcajce.JcaCertStore;
-import org.bouncycastle.cms.CMSProcessableByteArray;
-import org.bouncycastle.cms.CMSSignedData;
-import org.bouncycastle.cms.CMSSignedDataGenerator;
-import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder;
-import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
-import org.bouncycastle.cms.SignerInfoGenerator;
-import org.bouncycastle.cert.X509CertificateHolder;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
-import org.springframework.stereotype.Service;
-
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.RandomAccessFile;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.List;
-
 import org.apache.pdfbox.cos.COSArray;
-import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
-import org.apache.pdfbox.io.IOUtils;
-
-import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
-import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
-import org.bouncycastle.operator.bc.BcDigestCalculatorProvider;
-import org.bouncycastle.asn1.cms.CMSAttributes;
-import org.bouncycastle.cms.DefaultSignedAttributeTableGenerator;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
+import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface;
+import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERSet;
 import org.bouncycastle.asn1.cms.Attribute;
 import org.bouncycastle.asn1.cms.AttributeTable;
-import org.bouncycastle.asn1.cms.ContentInfo;
+import org.bouncycastle.asn1.cms.CMSAttributes;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
-import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.x509.Time;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.jcajce.JcaCertStore;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+import org.bouncycastle.cms.*;
+import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder;
+import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.DigestCalculatorProvider;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
+import org.springframework.stereotype.Service;
 
-import java.util.Date;
-import java.util.Hashtable;
-import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.ASN1Encodable;
-import org.bouncycastle.asn1.ASN1Set;
+import java.io.*;
+import java.nio.file.Files;
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.PrivateKey;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.util.*;
 
 @Service
 public class PDFSignatureService {
@@ -77,14 +56,14 @@ public class PDFSignatureService {
             float width,
             float height,
             String signatureStyle) throws Exception {
-        
+
         // Load the PDF document
         PDDocument document = Loader.loadPDF(new File(inputPDFPath));
-        
+
         // Add signature image to the first page
         PDPage page = document.getPage(0);
         PDImageXObject signatureImage = PDImageXObject.createFromFile(signatureImagePath, document);
-        
+
         // Create signature dictionary
         PDSignature signature = new PDSignature();
         signature.setFilter(PDSignature.FILTER_ADOBE_PPKLITE);
@@ -93,7 +72,7 @@ public class PDFSignatureService {
         signature.setLocation("Example Location");
         signature.setReason("Example Reason");
         signature.setSignDate(Calendar.getInstance());
-        
+
         // Create signature options with larger size
         SignatureOptions signatureOptions = new SignatureOptions();
         signatureOptions.setPage(0); // Sign on first page
@@ -108,7 +87,7 @@ public class PDFSignatureService {
             signature.setLocation("Chờ ký");
             signature.setReason("Chờ ký");
             signature.setSignDate(Calendar.getInstance());
-            
+
             // Create a placeholder signature that can be signed later
             document.addSignature(signature, new SignatureInterface() {
                 @Override
@@ -122,13 +101,13 @@ public class PDFSignatureService {
             // Add signature image at the specified location with style
             try (PDPageContentStream contentStream = new PDPageContentStream(
                     document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
-                
+
                 // Add purple border for deferred style
-                contentStream.setStrokingColor(156/255f, 39/255f, 176/255f);
+                contentStream.setStrokingColor(156 / 255f, 39 / 255f, 176 / 255f);
                 contentStream.setLineWidth(2);
                 contentStream.addRect(x - 5, y - 5, width + 10, height + 10);
                 contentStream.stroke();
-                
+
                 // Draw the signature image
                 contentStream.drawImage(signatureImage, x, y, width, height);
             }
@@ -184,48 +163,48 @@ public class PDFSignatureService {
         // Add signature image at the specified location with style
         try (PDPageContentStream contentStream = new PDPageContentStream(
                 document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
-            
+
             // Apply different styles based on signatureStyle
             switch (signatureStyle) {
                 case "stamp":
                     // Add red border for stamp style
-                    contentStream.setStrokingColor(255/255f, 0/255f, 0/255f);
+                    contentStream.setStrokingColor(255 / 255f, 0 / 255f, 0 / 255f);
                     contentStream.setLineWidth(2);
                     contentStream.addRect(x - 5, y - 5, width + 10, height + 10);
                     contentStream.stroke();
                     break;
                 case "seal":
                     // Add blue circular border for seal style
-                    contentStream.setStrokingColor(0/255f, 0/255f, 255/255f);
+                    contentStream.setStrokingColor(0 / 255f, 0 / 255f, 255 / 255f);
                     contentStream.setLineWidth(2);
-                    float centerX = x + width/2;
-                    float centerY = y + height/2;
-                    float radius = Math.max(width, height)/2 + 5;
+                    float centerX = x + width / 2;
+                    float centerY = y + height / 2;
+                    float radius = Math.max(width, height) / 2 + 5;
                     contentStream.moveTo(centerX + radius, centerY);
                     contentStream.curveTo(
-                        centerX + radius, centerY + radius * 0.552f,
-                        centerX + radius * 0.552f, centerY + radius,
-                        centerX, centerY + radius
+                            centerX + radius, centerY + radius * 0.552f,
+                            centerX + radius * 0.552f, centerY + radius,
+                            centerX, centerY + radius
                     );
                     contentStream.curveTo(
-                        centerX - radius * 0.552f, centerY + radius,
-                        centerX - radius, centerY + radius * 0.552f,
-                        centerX - radius, centerY
+                            centerX - radius * 0.552f, centerY + radius,
+                            centerX - radius, centerY + radius * 0.552f,
+                            centerX - radius, centerY
                     );
                     contentStream.curveTo(
-                        centerX - radius, centerY - radius * 0.552f,
-                        centerX - radius * 0.552f, centerY - radius,
-                        centerX, centerY - radius
+                            centerX - radius, centerY - radius * 0.552f,
+                            centerX - radius * 0.552f, centerY - radius,
+                            centerX, centerY - radius
                     );
                     contentStream.curveTo(
-                        centerX + radius * 0.552f, centerY - radius,
-                        centerX + radius, centerY - radius * 0.552f,
-                        centerX + radius, centerY
+                            centerX + radius * 0.552f, centerY - radius,
+                            centerX + radius, centerY - radius * 0.552f,
+                            centerX + radius, centerY
                     );
                     contentStream.stroke();
                     break;
             }
-            
+
             // Draw the signature image
             contentStream.drawImage(signatureImage, x, y, width, height);
         }
@@ -244,59 +223,59 @@ public class PDFSignatureService {
             float width,
             float height,
             String signatureStyle) throws IOException {
-        
+
         // Load the PDF document
         PDDocument document = Loader.loadPDF(new File(inputPDFPath));
-        
+
         // Add signature image to the first page
         PDPage page = document.getPage(0);
         PDImageXObject signatureImage = PDImageXObject.createFromFile(signatureImagePath, document);
-        
+
         // Add signature image at the specified location with style
         try (PDPageContentStream contentStream = new PDPageContentStream(
                 document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
-            
+
             // Apply different styles based on signatureStyle
             switch (signatureStyle) {
                 case "stamp":
                     // Add red border for stamp style
-                    contentStream.setStrokingColor(255/255f, 0/255f, 0/255f);
+                    contentStream.setStrokingColor(255 / 255f, 0 / 255f, 0 / 255f);
                     contentStream.setLineWidth(2);
                     contentStream.addRect(x - 5, y - 5, width + 10, height + 10);
                     contentStream.stroke();
                     break;
                 case "seal":
                     // Add blue circular border for seal style
-                    contentStream.setStrokingColor(0/255f, 0/255f, 255/255f);
+                    contentStream.setStrokingColor(0 / 255f, 0 / 255f, 255 / 255f);
                     contentStream.setLineWidth(2);
-                    float centerX = x + width/2;
-                    float centerY = y + height/2;
-                    float radius = Math.max(width, height)/2 + 5;
+                    float centerX = x + width / 2;
+                    float centerY = y + height / 2;
+                    float radius = Math.max(width, height) / 2 + 5;
                     contentStream.moveTo(centerX + radius, centerY);
                     contentStream.curveTo(
-                        centerX + radius, centerY + radius * 0.552f,
-                        centerX + radius * 0.552f, centerY + radius,
-                        centerX, centerY + radius
+                            centerX + radius, centerY + radius * 0.552f,
+                            centerX + radius * 0.552f, centerY + radius,
+                            centerX, centerY + radius
                     );
                     contentStream.curveTo(
-                        centerX - radius * 0.552f, centerY + radius,
-                        centerX - radius, centerY + radius * 0.552f,
-                        centerX - radius, centerY
+                            centerX - radius * 0.552f, centerY + radius,
+                            centerX - radius, centerY + radius * 0.552f,
+                            centerX - radius, centerY
                     );
                     contentStream.curveTo(
-                        centerX - radius, centerY - radius * 0.552f,
-                        centerX - radius * 0.552f, centerY - radius,
-                        centerX, centerY - radius
+                            centerX - radius, centerY - radius * 0.552f,
+                            centerX - radius * 0.552f, centerY - radius,
+                            centerX, centerY - radius
                     );
                     contentStream.curveTo(
-                        centerX + radius * 0.552f, centerY - radius,
-                        centerX + radius, centerY - radius * 0.552f,
-                        centerX + radius, centerY
+                            centerX + radius * 0.552f, centerY - radius,
+                            centerX + radius, centerY - radius * 0.552f,
+                            centerX + radius, centerY
                     );
                     contentStream.stroke();
                     break;
             }
-            
+
             // Draw the signature image
             contentStream.drawImage(signatureImage, x, y, width, height);
         }
@@ -311,18 +290,18 @@ public class PDFSignatureService {
             String outputPDFPath,
             String p12Path,
             String p12Password) throws Exception {
-        
+
         // Load the PDF document
         PDDocument document = Loader.loadPDF(new File(inputPDFPath));
-        
+
         // Get the existing signature
         PDSignature signature = document.getSignatureDictionaries().get(0);
-        
+
         // Create signature options with larger size
         SignatureOptions signatureOptions = new SignatureOptions();
         signatureOptions.setPreferredSignatureSize(5000000); // 5MB for signature space
         signatureOptions.setPage(0); // Sign on first page
-        
+
         // Load the keystore
         java.security.KeyStore keyStore = java.security.KeyStore.getInstance("PKCS12");
         keyStore.load(new FileInputStream(p12Path), p12Password.toCharArray());
@@ -403,19 +382,27 @@ public class PDFSignatureService {
             // Ensure the signature data fits within the reserved space
             int reservedSpace = contents.getBytes().length;
             if (signature.length > reservedSpace) {
-                 throw new IOException("Signature data is too large for the reserved space. Reserved: " + reservedSpace + ", Actual: " + signature.length);
+                throw new IOException("Signature data is too large for the reserved space. Reserved: " + reservedSpace + ", Actual: " + signature.length);
             }
-            
+
             // Update the Contents field with the actual signature data, padded with zeros if necessary
             byte[] paddedSignature = new byte[reservedSpace];
             System.arraycopy(signature, 0, paddedSignature, 0, signature.length);
             // The rest of paddedSignature is already filled with zeros
-            signatureDict.setItem(COSName.CONTENTS, new COSString(paddedSignature));
+
+            // Convert the padded signature byte array to a hexadecimal string
+            StringBuilder hexSignature = new StringBuilder();
+            for (byte b : paddedSignature) {
+                hexSignature.append(String.format("%02x", b));
+            }
+
+            // Update the Contents field with the actual signature data as a hexadecimal string
+            signatureDict.setItem(COSName.CONTENTS, new COSString("<" + hexSignature.toString() + ">"));
 
             // Save the modified document incrementally
             document.saveIncremental(new FileOutputStream(outputPDFPath));
         }
-        
+
         // Delete the temporary file after signing
         if (tempFile.exists()) {
             tempFile.delete();
@@ -428,7 +415,7 @@ public class PDFSignatureService {
      */
     public HashCreationResult createHashForSigning(String inputPDFPath) throws IOException {
         PDDocument document = Loader.loadPDF(new File(inputPDFPath));
-        
+
         // Create signature dictionary
         PDSignature signature = new PDSignature();
         signature.setFilter(PDSignature.FILTER_ADOBE_PPKLITE);
@@ -452,12 +439,12 @@ public class PDFSignatureService {
                 byte[] contentBytes = content.readAllBytes();
                 // Note: We don't return the hash here. We return the placeholder.
                 // The hash is calculated based on the content *before* the placeholder is filled.
-                
+
                 // Return a byte array of the desired reserved size (e.g., 25MB)
                 // This forces PDFBox to reserve this amount of space for the Contents field.
-                byte[] placeholder = new byte[reservedSpace]; // Use the same reservedSpace
+                // Use the same reservedSpace
                 // Fill with zeros (ByteArrayOutputStream already initializes with zeros)
-                return placeholder;
+                return new byte[reservedSpace];
             }
         }, signatureOptions);
 
@@ -468,7 +455,7 @@ public class PDFSignatureService {
 
         // Re-open the document to calculate the hash correctly based on the document *with* the placeholder
         PDDocument docForHash = Loader.loadPDF(tempFile);
-         // Get the signature dictionary to calculate the hash using getByteRange
+        // Get the signature dictionary to calculate the hash using getByteRange
         PDSignature sigForHash = docForHash.getSignatureDictionaries().get(0);
         ByteArrayOutputStream hashOutputStream = new ByteArrayOutputStream();
 
@@ -515,22 +502,8 @@ public class PDFSignatureService {
     /**
      * Helper class to return hash and temporary file path
      */
-    public static class HashCreationResult {
-        private final byte[] hash;
-        private final String tempFilePath;
+    public record HashCreationResult(byte[] hash, String tempFilePath) {
 
-        public HashCreationResult(byte[] hash, String tempFilePath) {
-            this.hash = hash;
-            this.tempFilePath = tempFilePath;
-        }
-
-        public byte[] getHash() {
-            return hash;
-        }
-
-        public String getTempFilePath() {
-            return tempFilePath;
-        }
     }
 
     /**
@@ -538,18 +511,18 @@ public class PDFSignatureService {
      */
     public byte[] signHashWithP12(byte[] hash, String p12Path, String p12Password) throws Exception {
         // Load the keystore
-        java.security.KeyStore keyStore = java.security.KeyStore.getInstance("PKCS12");
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(new FileInputStream(p12Path), p12Password.toCharArray());
 
         // Get the private key and certificate
         String alias = keyStore.aliases().nextElement();
-        java.security.PrivateKey privateKey = (java.security.PrivateKey) keyStore.getKey(alias, p12Password.toCharArray());
-        java.security.cert.Certificate[] certChain = keyStore.getCertificateChain(alias);
+        PrivateKey privateKey = (PrivateKey) keyStore.getKey(alias, p12Password.toCharArray());
+        Certificate[] certChain = keyStore.getCertificateChain(alias);
 
         // Create the signature
-        List<java.security.cert.X509Certificate> certList = new ArrayList<>();
-        for (java.security.cert.Certificate cert : certChain) {
-            certList.add((java.security.cert.X509Certificate) cert);
+        List<X509Certificate> certList = new ArrayList<>();
+        for (Certificate cert : certChain) {
+            certList.add((X509Certificate) cert);
         }
         JcaCertStore certStore = new JcaCertStore(certList);
 
@@ -566,49 +539,37 @@ public class PDFSignatureService {
         // Create SignerInfoGeneratorBuilder
         JcaDigestCalculatorProviderBuilder dcpBuilder = new JcaDigestCalculatorProviderBuilder();
         DigestCalculatorProvider digestProvider = dcpBuilder.build();
-        
+
         // Create signed attributes table
-        Hashtable<ASN1ObjectIdentifier, ASN1Set> signedAttrs = new Hashtable<>();
+        Hashtable<ASN1ObjectIdentifier, Attribute> signedAttrs = new Hashtable<>();
 
         // Add contentType attribute (required for PDF)
-        signedAttrs.put(CMSAttributes.contentType, new DERSet(PKCSObjectIdentifiers.data));
+        signedAttrs.put(CMSAttributes.contentType, new Attribute(CMSAttributes.contentType, new DERSet(PKCSObjectIdentifiers.data)));
 
         // Add signingTime attribute
-        signedAttrs.put(CMSAttributes.signingTime, new DERSet(new Time(new Date())));
+        signedAttrs.put(CMSAttributes.signingTime, new Attribute(CMSAttributes.signingTime, new DERSet(new Time(new Date()))));
+
+        // Add messageDigest attribute
+        MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+        byte[] hashOfHash = sha256.digest(hash);
+        signedAttrs.put(CMSAttributes.messageDigest, new Attribute(CMSAttributes.messageDigest, new DERSet(new DEROctetString(hashOfHash))));
 
         // Create AttributeTable from attributes
         AttributeTable signedAttributeTable = new AttributeTable(signedAttrs);
 
         // Create SignerInfoGenerator
-        X509CertificateHolder certHolder = new JcaX509CertificateHolder((java.security.cert.X509Certificate) certChain[0]);
-        
-        SignerInfoGenerator signerInfoGenerator = new JcaSignerInfoGeneratorBuilder(
-                digestProvider)
+        X509CertificateHolder certHolder = new JcaX509CertificateHolder((X509Certificate) certChain[0]);
+        SignerInfoGenerator signerInfoGenerator = new JcaSignerInfoGeneratorBuilder(digestProvider)
                 .setSignedAttributeGenerator(new DefaultSignedAttributeTableGenerator(signedAttributeTable))
-                .setUnsignedAttributeGenerator(null)
                 .build(contentSigner, certHolder);
-        
+
         // Add SignerInfoGenerator to the generator
         generator.addSignerInfoGenerator(signerInfoGenerator);
 
         // Create the signature
         CMSProcessableByteArray cmsData = new CMSProcessableByteArray(hash);
-        CMSSignedData signedData = generator.generate(cmsData, true);
+        CMSSignedData signedData = generator.generate(cmsData, false); // Use false for detached signature
 
         return signedData.getEncoded();
     }
-
-    /**
-     * Example of how to use two-step signing with .p12
-     */
-    public void signWithP12Example(String inputPDFPath, String outputPDFPath, String p12Path, String p12Password) throws Exception {
-        // Step 1: Create hash for signing
-        HashCreationResult hashResult = createHashForSigning(inputPDFPath);
-
-        // Step 2: Sign the hash with .p12
-        byte[] signature = signHashWithP12(hashResult.getHash(), p12Path, p12Password);
-
-        // Step 3: Embed the signature
-        embedSignature(hashResult.getTempFilePath(), outputPDFPath, signature);
-    }
-} 
+}
