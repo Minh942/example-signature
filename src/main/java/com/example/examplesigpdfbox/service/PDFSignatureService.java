@@ -693,7 +693,7 @@ public class PDFSignatureService {
      * Load chuỗi chứng chỉ
      */
     private List<X509Certificate> loadCertificateChain() throws Exception {
-        String certPath = ""; // Cấu hình đường dẫn file chứng chỉ
+        String certPath = "\"E:\\mycert.cer\""; // Cấu hình đường dẫn file chứng chỉ
         try (InputStream inStream = new FileInputStream(certPath)) {
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
             return (List<X509Certificate>) cf.generateCertificates(inStream);

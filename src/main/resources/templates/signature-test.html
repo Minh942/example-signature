@@ -27,6 +27,26 @@
             border-top: none;
             border-radius: 0 0 5px 5px;
         }
+        .response-box {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .signature-preview {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .signature-preview img {
+            max-width: 200px;
+            max-height: 100px;
+        }
     </style>
 </head>
 <body>
@@ -39,7 +59,10 @@
                 <button class="nav-link active" id="three-step-tab" data-bs-toggle="tab" data-bs-target="#three-step" type="button" role="tab">Three-Step Signing</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="remote-tab" data-bs-toggle="tab" data-bs-target="#remote" type="button" role="tab">Remote Signing</button>
+                <button class="nav-link" id="image-tab" data-bs-toggle="tab" data-bs-target="#image" type="button" role="tab">Image Signature</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="deferred-tab" data-bs-toggle="tab" data-bs-target="#deferred" type="button" role="tab">Deferred Signature</button>
             </li>
         </ul>
 
@@ -47,14 +70,15 @@
         <div class="tab-content" id="signatureTabsContent">
             <!-- Three-Step Signing Tab -->
             <div class="tab-pane fade show active" id="three-step" role="tabpanel">
-                <!-- Step 1: Create Hash -->
+                <!-- Step 1: Prepare Document -->
                 <div class="step" id="step1">
-                    <h3>Step 1: Create Hash</h3>
+                    <h3>Step 1: Prepare Document</h3>
                     <div class="mb-3">
                         <label for="pdfFile" class="form-label">Select PDF File</label>
                         <input type="file" class="form-control" id="pdfFile" accept=".pdf">
                     </div>
-                    <button class="btn btn-primary" onclick="createHash()">Create Hash</button>
+                    <button class="btn btn-primary" onclick="prepareDocument()">Prepare Document</button>
+                    <div class="response-box" id="step1Response"></div>
                 </div>
 
                 <!-- Step 2: Sign Hash -->
@@ -69,105 +93,98 @@
                         <input type="password" class="form-control" id="password">
                     </div>
                     <button class="btn btn-primary" onclick="signHash()">Sign Hash</button>
+                    <div class="response-box" id="step2Response"></div>
                 </div>
 
-                <!-- Step 3: Embed Signature -->
+                <!-- Step 3: Complete Signing -->
                 <div class="step" id="step3">
-                    <h3>Step 3: Embed Signature</h3>
-                    <button class="btn btn-primary" onclick="embedSignature()">Embed Signature</button>
+                    <h3>Step 3: Complete Signing</h3>
+                    <button class="btn btn-primary" onclick="completeSigning()">Complete Signing</button>
+                    <div class="response-box" id="step3Response"></div>
                 </div>
             </div>
 
-            <!-- Remote Signing Tab -->
-            <div class="tab-pane fade" id="remote" role="tabpanel">
-                <div class="row">
-                    <!-- Direct Signing -->
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4>Direct Signing</h4>
+            <!-- Image Signature Tab -->
+            <div class="tab-pane fade" id="image" role="tabpanel">
+                <div class="card">
+                    <div class="card-body">
+                        <h3>Image Signature</h3>
+                        <div class="mb-3">
+                            <label for="imagePdfFile" class="form-label">PDF File</label>
+                            <input type="file" class="form-control" id="imagePdfFile" accept=".pdf">
+                        </div>
+                        <div class="mb-3">
+                            <label for="signatureImage" class="form-label">Signature Image</label>
+                            <input type="file" class="form-control" id="signatureImage" accept="image/*" onchange="previewSignature()">
+                            <div class="signature-preview" id="signaturePreview"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="imageP12File" class="form-label">P12 File</label>
+                            <input type="file" class="form-control" id="imageP12File" accept=".p12">
+                        </div>
+                        <div class="mb-3">
+                            <label for="imagePassword" class="form-label">P12 Password</label>
+                            <input type="password" class="form-control" id="imagePassword">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label for="x" class="form-label">X Position</label>
+                                    <input type="number" class="form-control" id="x" value="100">
+                                </div>
                             </div>
-                            <div class="card-body">
+                            <div class="col-md-3">
                                 <div class="mb-3">
-                                    <label for="directPdfFile" class="form-label">PDF File</label>
-                                    <input type="file" class="form-control" id="directPdfFile" accept=".pdf">
+                                    <label for="y" class="form-label">Y Position</label>
+                                    <input type="number" class="form-control" id="y" value="100">
                                 </div>
+                            </div>
+                            <div class="col-md-3">
                                 <div class="mb-3">
-                                    <label for="directSignatureImage" class="form-label">Signature Image</label>
-                                    <input type="file" class="form-control" id="directSignatureImage" accept="image/*">
+                                    <label for="width" class="form-label">Width</label>
+                                    <input type="number" class="form-control" id="width" value="200">
                                 </div>
+                            </div>
+                            <div class="col-md-3">
                                 <div class="mb-3">
-                                    <label for="directP12File" class="form-label">P12 File</label>
-                                    <input type="file" class="form-control" id="directP12File" accept=".p12">
+                                    <label for="height" class="form-label">Height</label>
+                                    <input type="number" class="form-control" id="height" value="100">
                                 </div>
-                                <div class="mb-3">
-                                    <label for="directPassword" class="form-label">P12 Password</label>
-                                    <input type="password" class="form-control" id="directPassword">
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="x" class="form-label">X Position</label>
-                                            <input type="number" class="form-control" id="x" value="100">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="y" class="form-label">Y Position</label>
-                                            <input type="number" class="form-control" id="y" value="100">
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="width" class="form-label">Width</label>
-                                            <input type="number" class="form-control" id="width" value="200">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="height" class="form-label">Height</label>
-                                            <input type="number" class="form-control" id="height" value="100">
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="signatureStyle" class="form-label">Signature Style</label>
-                                    <select class="form-control" id="signatureStyle">
-                                        <option value="normal">Normal</option>
-                                        <option value="stamp">Stamp</option>
-                                        <option value="seal">Seal</option>
-                                        <option value="deferred">Deferred</option>
-                                    </select>
-                                </div>
-                                <button class="btn btn-primary" onclick="directSign()">Sign PDF</button>
                             </div>
                         </div>
+                        <div class="mb-3">
+                            <label for="signatureStyle" class="form-label">Signature Style</label>
+                            <select class="form-control" id="signatureStyle">
+                                <option value="normal">Normal</option>
+                                <option value="stamp">Stamp</option>
+                                <option value="seal">Seal</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="signWithImage()">Sign PDF</button>
+                        <div class="response-box" id="imageResponse"></div>
                     </div>
+                </div>
+            </div>
 
-                    <!-- Deferred Signing -->
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h4>Deferred Signing</h4>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="deferredPdfFile" class="form-label">PDF File</label>
-                                    <input type="file" class="form-control" id="deferredPdfFile" accept=".pdf">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="deferredP12File" class="form-label">P12 File</label>
-                                    <input type="file" class="form-control" id="deferredP12File" accept=".p12">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="deferredPassword" class="form-label">P12 Password</label>
-                                    <input type="password" class="form-control" id="deferredPassword">
-                                </div>
-                                <button class="btn btn-primary" onclick="deferredSign()">Sign Deferred</button>
-                            </div>
+            <!-- Deferred Signature Tab -->
+            <div class="tab-pane fade" id="deferred" role="tabpanel">
+                <div class="card">
+                    <div class="card-body">
+                        <h3>Deferred Signature</h3>
+                        <div class="mb-3">
+                            <label for="deferredPdfFile" class="form-label">PDF File</label>
+                            <input type="file" class="form-control" id="deferredPdfFile" accept=".pdf">
                         </div>
+                        <div class="mb-3">
+                            <label for="deferredP12File" class="form-label">P12 File</label>
+                            <input type="file" class="form-control" id="deferredP12File" accept=".p12">
+                        </div>
+                        <div class="mb-3">
+                            <label for="deferredPassword" class="form-label">P12 Password</label>
+                            <input type="password" class="form-control" id="deferredPassword">
+                        </div>
+                        <button class="btn btn-primary" onclick="signDeferred()">Sign PDF</button>
+                        <div class="response-box" id="deferredResponse"></div>
                     </div>
                 </div>
             </div>
@@ -179,12 +196,29 @@
         // Three-Step Signing Variables
         let hash = null;
         let signature = null;
-        let originalFileName = null;
-        let originalFile = null;  // Add this to store the original file
-        let tempFilePath = null; // Add this to store the temporary file path
+        let tempFilePath = null;
+
+        // Helper function to display response
+        function displayResponse(elementId, data) {
+            const responseBox = document.getElementById(elementId);
+            responseBox.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        }
+
+        // Helper function to download PDF
+        async function downloadPDF(response) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'signed_document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
 
         // Three-Step Signing Functions
-        async function createHash() {
+        async function prepareDocument() {
             const fileInput = document.getElementById('pdfFile');
             const file = fileInput.files[0];
             if (!file) {
@@ -192,31 +226,29 @@
                 return;
             }
 
-            originalFile = file;  // Store the original file
             const formData = new FormData();
             formData.append('file', file);
 
             try {
-                const response = await fetch('/api/signature/step1/create-hash', {
+                const response = await fetch('/api/signature/step1/prepare', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    throw new Error(errorText || 'Error creating hash');
+                    throw new Error(errorText || 'Error preparing document');
                 }
 
                 const data = await response.json();
                 hash = data.hash;
-                originalFileName = data.originalFileName;
-                tempFilePath = data.tempFilePath; // Store the temporary file path
+                tempFilePath = data.tempFilePath;
                 
+                displayResponse('step1Response', data);
                 document.getElementById('step1').classList.add('completed');
                 document.getElementById('step2').classList.add('active');
-                alert('Hash created successfully!');
             } catch (error) {
-                alert('Error: ' + error.message);
+                displayResponse('step1Response', { error: error.message });
             }
         }
 
@@ -240,7 +272,7 @@
             formData.append('password', password);
 
             try {
-                const response = await fetch('/api/signature/step2/sign-hash', {
+                const response = await fetch('/api/signature/step2/sign', {
                     method: 'POST',
                     body: formData
                 });
@@ -253,64 +285,66 @@
                 const data = await response.json();
                 signature = data.signature;
                 
+                displayResponse('step2Response', data);
                 document.getElementById('step2').classList.add('completed');
                 document.getElementById('step3').classList.add('active');
-                alert('Hash signed successfully!');
             } catch (error) {
-                alert('Error: ' + error.message);
+                displayResponse('step2Response', { error: error.message });
             }
         }
 
-        async function embedSignature() {
-            if (!hash || !signature || !originalFile || !tempFilePath) { // Check for tempFilePath
+        async function completeSigning() {
+            if (!hash || !signature || !tempFilePath) {
                 alert('Please complete steps 1 and 2 first');
                 return;
             }
 
             const formData = new FormData();
-            formData.append('tempFilePath', tempFilePath); // Send temp file path
+            formData.append('tempFilePath', tempFilePath);
             formData.append('signature', signature);
 
             try {
-                const response = await fetch('/api/signature/step3/embed-signature', {
+                const response = await fetch('/api/signature/step3/complete', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    throw new Error(errorText || 'Error embedding signature');
+                    throw new Error(errorText || 'Error completing signature');
                 }
 
-                // Download the signed PDF
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'signed_' + originalFileName;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-
+                await downloadPDF(response);
+                displayResponse('step3Response', { message: 'Signature completed successfully!' });
                 document.getElementById('step3').classList.add('completed');
-                alert('Signature embedded successfully!');
             } catch (error) {
-                alert('Error: ' + error.message);
+                displayResponse('step3Response', { error: error.message });
             }
         }
 
-        // Direct Signing Function
-        async function directSign() {
-            const pdfFile = document.getElementById('directPdfFile').files[0];
-            const signatureImage = document.getElementById('directSignatureImage').files[0];
-            const p12File = document.getElementById('directP12File').files[0];
-            const password = document.getElementById('directPassword').value;
+        // Image Signature Functions
+        function previewSignature() {
+            const file = document.getElementById('signatureImage').files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('signaturePreview');
+                    preview.innerHTML = `<img src="${e.target.result}" alt="Signature Preview">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function signWithImage() {
+            const pdfFile = document.getElementById('imagePdfFile').files[0];
+            const signatureImage = document.getElementById('signatureImage').files[0];
+            const p12File = document.getElementById('imageP12File').files[0];
+            const password = document.getElementById('imagePassword').value;
             const x = document.getElementById('x').value;
             const y = document.getElementById('y').value;
             const width = document.getElementById('width').value;
             const height = document.getElementById('height').value;
-            const signatureStyle = document.getElementById('signatureStyle').value;
+            const style = document.getElementById('signatureStyle').value;
 
             if (!pdfFile || !signatureImage || !p12File || !password) {
                 alert('Please fill in all required fields');
@@ -326,7 +360,7 @@
             formData.append('y', y);
             formData.append('width', width);
             formData.append('height', height);
-            formData.append('signatureStyle', signatureStyle);
+            formData.append('signatureStyle', style);
 
             try {
                 const response = await fetch('/api/signature/sign', {
@@ -339,24 +373,15 @@
                     throw new Error(errorText || 'Error signing PDF');
                 }
 
-                // Download the signed PDF
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'signed_' + pdfFile.name;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                alert('PDF signed successfully!');
+                await downloadPDF(response);
+                displayResponse('imageResponse', { message: 'PDF signed successfully!' });
             } catch (error) {
-                alert('Error: ' + error.message);
+                displayResponse('imageResponse', { error: error.message });
             }
         }
 
-        // Deferred Signing Function
-        async function deferredSign() {
+        // Deferred Signature Functions
+        async function signDeferred() {
             const pdfFile = document.getElementById('deferredPdfFile').files[0];
             const p12File = document.getElementById('deferredP12File').files[0];
             const password = document.getElementById('deferredPassword').value;
@@ -379,22 +404,13 @@
 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    throw new Error(errorText || 'Error signing deferred signature');
+                    throw new Error(errorText || 'Error signing PDF');
                 }
 
-                // Download the signed PDF
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'signed_' + pdfFile.name;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                alert('Deferred signature completed successfully!');
+                await downloadPDF(response);
+                displayResponse('deferredResponse', { message: 'PDF signed successfully!' });
             } catch (error) {
-                alert('Error: ' + error.message);
+                displayResponse('deferredResponse', { error: error.message });
             }
         }
     </script>
